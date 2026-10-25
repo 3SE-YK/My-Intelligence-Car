@@ -102,7 +102,7 @@ int main(void)
             get_hist_gram((uint8_t *)image, MT9V03X_H, MT9V03X_W, hist_gram);
             unsigned char threshold = get_threshold_otsu(hist_gram);
             // 二值化处理
-            binaryzation_process((uint8_t *)image, MT9V03X_H, MT9V03X_W, threshold);
+            binaryzation_process((uint8_t *)image, MT9V03X_H, MT9V03X_W, 200);
             //filter
             //erode((uint8_t *)image,(uint8_t *)image_filter,MT9V03X_H,MT9V03X_W);
             // 边界线寻找
