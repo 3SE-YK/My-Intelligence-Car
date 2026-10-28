@@ -74,7 +74,7 @@ void Init()
 }
 
 uint8_t image[MT9V03X_H][MT9V03X_W];
-//uint8_t image_filter[MT9V03X_H][MT9V03X_W];
+uint8_t image_filter[MT9V03X_H][MT9V03X_W];
 short hist_gram[256];
 uint8_t left_line[MT9V03X_H];
 uint8_t mid_line[MT9V03X_H];
@@ -102,9 +102,11 @@ int main(void)
             get_hist_gram((uint8_t *)image, MT9V03X_H, MT9V03X_W, hist_gram);
             unsigned char threshold = get_threshold_otsu(hist_gram);
             // 二值化处理
-            binaryzation_process((uint8_t *)image, MT9V03X_H, MT9V03X_W, 200);
+            binaryzation_process((uint8_t *)image, MT9V03X_H, MT9V03X_W, threshold);
             //filter
-            //erode((uint8_t *)image,(uint8_t *)image_filter,MT9V03X_H,MT9V03X_W);
+            erode((uint8_t *)image,(uint8_t *)image_filter,MT9V03X_H,MT9V03X_W);
+            //dilate
+            dilate((uint8_t *)image_filter,(uint8_t *)image,MT9V03X_H,MT9V03X_W);
             // 边界线寻找
             auxiliary_process((uint8_t *)image, MT9V03X_H, MT9V03X_W, threshold, left_line, mid_line, right_line);
 

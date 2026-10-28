@@ -12,6 +12,7 @@ void binaryzation_process(unsigned char *_img,
 						  const unsigned short _cols,
 						  const unsigned int _threshold_value);
 void erode(const uint8_t *image, uint8_t *filter, int h, int w);
+void dilate(const uint8_t *src, uint8_t *dst, int h, int w);
 void auxiliary_process(uint8_t *_src_pixel_mat, uint8_t _src_rows, uint8_t _src_cols,
 					   unsigned char _threshold_val,
 					   uint8_t *_left_line, uint8_t *_mid_line, uint8_t *_right_line);
