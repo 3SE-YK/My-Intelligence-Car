@@ -32,7 +32,7 @@ void get_hist_gram(unsigned char *_img,
                    const unsigned short _cols,
                    short *_hist_gram)
 {
-    memset(_hist_gram, 0, 256);
+    memset(_hist_gram, 0, 512);
     for (unsigned short _i = 0; _i < _rows; ++_i)
     {
         for (unsigned short _j = 0; _j < _cols; ++_j)
@@ -141,9 +141,9 @@ void auxiliary_process(uint8_t *_src_pixel_mat, uint8_t _src_rows, uint8_t _src_
         for (int16_t c = mid; c <= cols - 3; c++)             // 向右找三连暗
             if (row[c] < _threshold_val && row[c+1] < _threshold_val && row[c+2] < _threshold_val) { r = c; break; }
 
-        if (l >= 0 && r >= 0)            { width = r - l; mid = (l + r) >> 1; line_valid[i] = 1; }
-        else if (l >= 0 && width)        { mid = MIN(cols - 1, l + (width >> 1)); line_valid[i] = 0; }
-        else if (r >= 0 && width)        { mid = MAX(0, r - (width >> 1));        line_valid[i] = 0; }
+        if (l >= 2 && r <= cols - 3)            { width = r - l; mid = (l + r) >> 1; line_valid[i] = 1; }
+        else if (l >= 2 && r > cols - 3)        { mid = MIN(cols - 1, l + (width >> 1)); line_valid[i] = 0; }
+        else if (l < 1 && r <= cols - 3)        { mid = MAX(0, r - (width >> 1));        line_valid[i] = 0; }
         else                             { /* 双边丢失：mid 保持上一行，不重置 */ line_valid[i] = 0; }
 
         _left_line[i]  = (l >= 0) ? (uint8_t)l : 0;
@@ -165,7 +165,7 @@ void erode(const uint8_t *src, uint8_t *dst, int h, int w)
     {
         for (int x = 0; x < w; x++)
         {
-            uint8_t v = 1;
+            uint8_t v = 255;
             for (int dy = -1; dy <= 1 && v; dy++)
             {
                 int ny = y + dy;
@@ -207,7 +207,7 @@ void dilate(const uint8_t *src, uint8_t *dst, int h, int w)
                     int nx = x + dx;
                     if (nx >= 0 && nx < w && src[ny * w + nx] != 0)
                     {
-                        v = 1;
+                        v = 255;
                         break;
                     }
                 }
