@@ -5,7 +5,14 @@
 #include "img_process.h"
 #include "string.h"
 #include <stdlib.h>
-
+uint8_t image[MT9V03X_H][MT9V03X_W];
+uint8_t image_filter[MT9V03X_H][MT9V03X_W];
+short hist_gram[256];
+uint8_t left_line[MT9V03X_H];
+uint8_t mid_line[MT9V03X_H];
+uint8_t right_line[MT9V03X_H];
+int8_t number_left_line[MT9V03X_H] ;
+int8_t number_right_line[MT9V03X_H] ;
 /*
  *@func: 二值化函数
  */
@@ -21,6 +28,21 @@ void binaryzation_process(unsigned char *_img,
             *(_img + _i) = 255;
         else
             *(_img + _i) = 0;
+    }
+    // 绘制边框，将图像边缘清零
+    for (int i = 0; i < _cols; i++)
+    {
+        _img[i] = 0;
+        _img[1 * _cols + i] = 0;
+        _img[2 * _cols + i] = 0;
+        _img[(_rows - 1) * _cols + i] = 0;
+    }
+    for (int i = 0; i < _rows; ++i)
+    {
+        _img[i * _cols + 0] = 0;
+        _img[i * _cols + 1] = 0;
+        _img[(i+1) * _cols - 1] = 0;
+        _img[(i+1) * _cols - 2] = 0;
     }
 }
 
@@ -109,110 +131,203 @@ unsigned char get_threshold_otsu(const short *hist)
     return (unsigned char)threshold;
 }
 
-uint8_t line_valid[MT9V03X_H];      // 1 = 本行中线可信，0 = 不可信（元素/丢线）
-
-void auxiliary_process(uint8_t *_src_pixel_mat, uint8_t _src_rows, uint8_t _src_cols,
+// 寻线函数
+void auxiliary_process(const uint8_t *_src_pixel_mat, uint8_t _src_rows, uint8_t _src_cols,
                        unsigned char _threshold_val,
                        uint8_t *_left_line, uint8_t *_mid_line, uint8_t *_right_line)
 {
-    const uint8_t cols = _src_cols, rows = _src_rows;
-    uint8_t mid = cols >> 1;
 
-    /* 1. 底行中心压黑线：挪到最近的白底（找到即停） */
-    const uint8_t *bottom = _src_pixel_mat + (rows - 1) * cols;
-    if (bottom[mid] < _threshold_val) {
-        int16_t cr = -1, cl = -1;
-        for (int16_t j = mid; j < cols - 2; j++)
-            if (bottom[j] >= _threshold_val && bottom[j+1] >= _threshold_val && bottom[j+2] >= _threshold_val) { cr = j; break; }
-        for (int16_t j = mid; j >= 2; j--)
-            if (bottom[j] >= _threshold_val && bottom[j-1] >= _threshold_val && bottom[j-2] >= _threshold_val) { cl = j; break; }
-        if (cr >= 0 && cl >= 0) mid = (cr - mid < mid - cl) ? cr : cl;
-        else                    mid = (cr >= 0) ? cr : (cl >= 0) ? cl : mid;
-    }
-
-    /* 2. 逐行扫线 */
-    uint8_t width = 0;                          // 最近一次双边命中的赛道宽度
-    for (int16_t i = rows - 1; i >= 0; i--) {
-        const uint8_t *row = _src_pixel_mat + i * cols;
-        int16_t l = -1, r = -1;
-
-        for (int16_t c = mid; c >= 2; c--)                    // 向左找三连暗
-            if (row[c] < _threshold_val && row[c-1] < _threshold_val && row[c-2] < _threshold_val) { l = c; break; }
-        for (int16_t c = mid; c <= cols - 3; c++)             // 向右找三连暗
-            if (row[c] < _threshold_val && row[c+1] < _threshold_val && row[c+2] < _threshold_val) { r = c; break; }
-
-        if (l >= 2 && r <= cols - 3)            { width = r - l; mid = (l + r) >> 1; line_valid[i] = 1; }
-        else if (l >= 2 && r > cols - 3)        { mid = MIN(cols - 1, l + (width >> 1)); line_valid[i] = 0; }
-        else if (l < 1 && r <= cols - 3)        { mid = MAX(0, r - (width >> 1));        line_valid[i] = 0; }
-        else                             { /* 双边丢失：mid 保持上一行，不重置 */ line_valid[i] = 0; }
-
-        _left_line[i]  = (l >= 0) ? (uint8_t)l : 0;
-        _right_line[i] = (r >= 0) ? (uint8_t)r : cols - 1;
-        _mid_line[i]   = mid;
-    }
-}
-
-
-/* 形态学滤波：3x3 结构元
- * 约定：二值图中 1 = 亮（白线），0 = 暗（背景）
- * 若你的二值化结果相反（线为 0），把 erode/dilate 的取值逻辑互换即可
- */
-
-/* 腐蚀：3x3 邻域全为 1 才输出 1。孤立噪点被清除，亮区收缩一圈 */
-void erode(const uint8_t *src, uint8_t *dst, int h, int w)
-{
-    for (int y = 0; y < h; y++)
+    for (int i = 0; i < MT9V03X_H; ++i)
     {
-        for (int x = 0; x < w; x++)
+        _left_line[i] = 0;
+        _right_line[i] = _src_cols - 1;
+    }
+    _left_line[_src_rows - 2] = 0;
+    _right_line[_src_rows - 2] = _src_cols - 1;
+    // 寻找底部的中点
+    for (int i = 2; i <= _src_cols/2; ++i)
+    {
+        // 寻左线
+        if (_src_pixel_mat[(_src_rows - 2) * _src_cols + i] == 0 &&
+            _src_pixel_mat[(_src_rows - 2) * _src_cols + i - 1] == 0 &&
+            _src_pixel_mat[(_src_rows - 2) * _src_cols + i + 1] == 255)
         {
-            uint8_t v = 255;
-            for (int dy = -1; dy <= 1 && v; dy++)
+            _left_line[_src_rows - 2] = i;
+            break;
+        }
+    }
+    for (int i = _src_cols -3; i > _src_cols/2 + 1; --i)
+    {
+        // 寻右线
+        if (_src_pixel_mat[(_src_rows - 2) * _src_cols + i] == 0 &&
+            _src_pixel_mat[(_src_rows - 2) * _src_cols + i - 1] == 255 &&
+            _src_pixel_mat[(_src_rows - 2) * _src_cols + i + 1] == 0)
+        {
+            _right_line[_src_rows - 2] = i;
+            break;
+        }
+    }
+    for (int i = 0; i < MT9V03X_H; ++i)
+    {
+        number_left_line[i] = 0;
+        number_right_line[i] = 0;
+    }
+    // 八邻域，自下而上寻找边线
+    //寻左线
+    int i = _src_rows - 2;
+    while (i > 2 )
+    {
+        if(_left_line[i] + number_left_line[i] < 2)
+        {
+            _left_line[i-1] = 2;
+            --i;
+            continue;
+        }
+        else if(_left_line[i] + number_left_line[i] > _src_cols - 3)
+        {
+            _left_line[i-1] = _src_cols - 3;
+            --i;
+            continue;
+        }
+        // 先判断上一行是否存在跳变点
+        int point_wite = 0;
+        bool is_find = 0;
+        for (int j = -1; j < 2; ++j)
+        {
+            if (_src_pixel_mat[(i - 1) * _src_cols + _left_line[i] + number_left_line[i] + j] == 255)
             {
-                int ny = y + dy;
-                if (ny < 0 || ny >= h)
+                point_wite++;
+            }
+            else
+            {
+                if(_src_pixel_mat[(i - 1) * _src_cols + _left_line[i] + number_left_line[i] + j + 1] == 255)
                 {
-                    v = 0;
+                    _left_line[i-1] = _left_line[i] + number_left_line[i] + j ;
+                    --i;
+                    is_find = 1;
                     break;
                 }
-                for (int dx = -1; dx <= 1; dx++)
+            }
+
+        }
+        if(is_find) continue;
+        if (point_wite == 0 || point_wite == 1)
+        {
+            number_left_line[i]++;
+        }
+        else if (point_wite == 3 || point_wite == 2)
+        {
+            number_left_line[i]--;
+        }
+ 
+    }
+    //寻右线
+    i = _src_rows - 2;
+    while (i > 2 )
+    {
+        if(_right_line[i] + number_right_line[i] < 2)
+        {
+            _right_line[i-1] = 2;
+            --i;
+            continue;
+        }
+        else if(_right_line[i] + number_right_line[i] > _src_cols - 3)
+        {
+            _right_line[i-1] = _src_cols - 3;
+            --i;
+            continue;
+        }
+        bool is_find = 0;
+        // 先判断上一行是否存在跳变点
+        int point_wite = 0;
+        for (int j = 1; j > -2; --j)
+        {
+            if (_src_pixel_mat[(i - 1) * _src_cols + _right_line[i] + number_right_line[i] + j] == 0)
+            {
+                if(_src_pixel_mat[(i - 1) * _src_cols + _right_line[i] + number_right_line[i] + j - 1] == 255)
                 {
-                    int nx = x + dx;
-                    if (nx < 0 || nx >= w || src[ny * w + nx] == 0)
-                    {
-                        v = 0;
-                        break;
-                    }
+                    _right_line[i-1] =  _right_line[i] + number_right_line[i] + j;
+                    --i;
+                    is_find = 1;
+                    break;
                 }
             }
-            dst[y * w + x] = v;
+            else
+            {
+                point_wite++;
+            }
         }
+        if(is_find)continue;
+        if ( point_wite == 0||point_wite == 1)
+        {
+            number_right_line[i]--;
+        }
+        else if (point_wite == 3 ||point_wite == 2)
+        {
+            number_right_line[i]++;
+        }
+    }
+    //绘制中线
+    for(int i = _src_rows - 2 ; i > 3; --i)
+    {
+        _mid_line[i] = (_left_line[i] + _right_line[i])/2; 
     }
 }
 
-/* 膨胀：3x3 邻域有 1 则输出 1。把腐蚀时收缩的线恢复原宽，并可接断线 */
-void dilate(const uint8_t *src, uint8_t *dst, int h, int w)
+/* 形态学滤波：3x3 结构元
+ * 约定：一个点周围八个邻域，白色的点超过5，这个点设置为白色，否则为黑色
+*/
+void filter(uint8_t *_src_pixel_mat,uint8_t *_src_filter_mat, uint8_t _src_rows, uint8_t _src_cols)
 {
-    for (int y = 0; y < h; y++)
+
+    for(int i = 1 ; i < _src_rows - 1; ++i)
     {
-        for (int x = 0; x < w; x++)
+        for(int j = 1;j<_src_cols - 1;++j)
         {
-            uint8_t v = 0;
-            for (int dy = -1; dy <= 1 && !v; dy++)
+            short num_wite = 0;
+            for(int k = -1 ; k < 2 ; ++k)
             {
-                int ny = y + dy;
-                if (ny < 0 || ny >= h)
-                    continue;
-                for (int dx = -1; dx <= 1; dx++)
-                {
-                    int nx = x + dx;
-                    if (nx >= 0 && nx < w && src[ny * w + nx] != 0)
-                    {
-                        v = 255;
-                        break;
-                    }
-                }
+                num_wite += _src_pixel_mat[i * _src_cols + j +k] / 255;
+                num_wite += _src_pixel_mat[(i-1) * _src_cols + j +k] / 255;
+                num_wite += _src_pixel_mat[(i+1) * _src_cols + j +k] / 255;
             }
-            dst[y * w + x] = v;
+            if(num_wite > 5)
+            {
+                _src_filter_mat[i * _src_cols + j] = 255;
+            }
+            else{
+                _src_filter_mat[i * _src_cols + j] = 0;
+            }
         }
     }
 }
+//绘制边线
+void paint_line()
+{
+    for(int i = MT9V03X_H - 1 ; i > 2 ; --i)
+    {
+        
+        int j = MIN(0,number_left_line[i]);
+        int k = j;
+        while(j <= MAX(0,number_left_line[i]) )
+        {
+            if((j - k)>5) break;
+            tft180_draw_point((left_line[i] + j)*0.75,i,RGB565_RED);
+            tft180_draw_point((left_line[i] + j)*0.75 + 2,i,RGB565_RED);
+            ++j;
+        }
+        j = MIN(0,number_right_line[i]);
+        k = j;
+        while(j <= MAX(0,number_right_line[i]) )
+        {
+            if((j - k)>5) break;
+            tft180_draw_point((right_line[i] + j)*0.75,i,RGB565_BLUE);
+            tft180_draw_point((right_line[i] + j)*0.75 - 2,i,RGB565_BLUE);
+            ++j;
+        }
+        tft180_draw_point(mid_line[i]*0.75,i,RGB565_GREEN);
+
+    }
+    
+}
+

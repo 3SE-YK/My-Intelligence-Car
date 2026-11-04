@@ -73,12 +73,8 @@ void Init()
     pit_ms_init(PIT_CH0, 10);
 }
 
-uint8_t image[MT9V03X_H][MT9V03X_W];
-uint8_t image_filter[MT9V03X_H][MT9V03X_W];
-short hist_gram[256];
-uint8_t left_line[MT9V03X_H];
-uint8_t mid_line[MT9V03X_H];
-uint8_t right_line[MT9V03X_H];
+
+
 
 int main(void)
 {
@@ -103,23 +99,23 @@ int main(void)
             unsigned char threshold = get_threshold_otsu(hist_gram);
             // 二值化处理
             binaryzation_process((uint8_t *)image, MT9V03X_H, MT9V03X_W, threshold);
-            //filter
-            erode((uint8_t *)image,(uint8_t *)image_filter,MT9V03X_H,MT9V03X_W);
-            //dilate
-            dilate((uint8_t *)image_filter,(uint8_t *)image,MT9V03X_H,MT9V03X_W);
+            //形态学处理
+            filter((uint8_t *)image,(uint8_t *)image_filter, MT9V03X_H, MT9V03X_W);
+
             // 边界线寻找
-            auxiliary_process((uint8_t *)image, MT9V03X_H, MT9V03X_W, threshold, left_line, mid_line, right_line);
+            auxiliary_process((uint8_t *)image_filter, MT9V03X_H, MT9V03X_W, 128, left_line, mid_line, right_line);
 
-            for (uint8_t _i = 0; _i < MT9V03X_H; ++_i)
-            {
-                // 将边界线也显示出来
-                image[_i][left_line[_i]] = 0;
-                image[_i][mid_line[_i]] = 0;
-                image[_i][right_line[_i]] = 0;
-            }
+            // for (uint8_t _i = 0; _i < MT9V03X_H; ++_i)
+            // {
+            //     // 将边界线也显示出来
+            //     image_filter[_i][left_line[_i]] = 0;
+            //     image_filter[_i][mid_line[_i]] = 0;
+            //     image_filter[_i][right_line[_i]] = 0;
+            // }
             // 显示图像
-            tft180_displayimage03x((uint8_t *)image, 125, 100);
-
+            tft180_displayimage03x((uint8_t *)image_filter, 141, MT9V03X_H);
+            //绘制边线
+            paint_line();
             // 取图像下1/4处做误差判断
             float mid_err = (MT9V03X_W/2) - mid_line[MT9V03X_H-MT9V03X_H/4];
             // 舵机根据误差乘以系数打角
