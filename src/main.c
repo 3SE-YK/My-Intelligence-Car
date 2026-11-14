@@ -105,15 +105,6 @@ int main(void)
             // 边界线寻找
             auxiliary_process((uint8_t *)image_filter, MT9V03X_H, MT9V03X_W, 128, left_line, mid_line, right_line);
 
-            // for (uint8_t _i = 0; _i < MT9V03X_H; ++_i)
-            // {
-            //     // 将边界线也显示出来
-            //     image_filter[_i][left_line[_i]] = 0;
-            //     image_filter[_i][mid_line[_i]] = 0;
-            //     image_filter[_i][right_line[_i]] = 0;
-            // }
-            // 显示图像
-            tft180_displayimage03x((uint8_t *)image_filter, 141, MT9V03X_H);
             //绘制边线
             paint_line();
             // 取图像下1/4处做误差判断
